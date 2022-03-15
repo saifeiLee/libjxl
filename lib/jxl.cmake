@@ -315,6 +315,8 @@ set(JPEGXL_INTERNAL_SOURCES_ENC
   jxl/enc_xyb.cc
   jxl/enc_xyb.h
   jxl/encode.cc
+  jxl/jpeg2jxl_v2.cc
+  jxl/jpeg2jxl_v2_wrapper.cc
   jxl/encode_internal.h
   jxl/gaborish.cc
   jxl/gaborish.h
