@@ -103,7 +103,7 @@ int CompressJpegXlMain(int argc, const char* argv[]) {
       container.jumb_size = io.blobs.jumbf.size();
     }
     jxl::PaddedBytes jpeg_data;
-    if (io.Main().IsJPEG()) {
+    if (args.store_jpeg_metadata && io.Main().IsJPEG()) {
       jxl::jpeg::JPEGData data_in = *io.Main().jpeg_data;
       if (EncodeJPEGData(data_in, &jpeg_data)) {
         container.jpeg_reconstruction = jpeg_data.data();
@@ -113,7 +113,7 @@ int CompressJpegXlMain(int argc, const char* argv[]) {
         ret = CjxlRetCode::DROPPED_JBRD;
       }
     }
-    compressed.clear();
+    compressed = {};
     if (!EncodeJpegXlContainerOneShot(container, &compressed)) {
       fprintf(stderr, "Failed to encode container format\n");
       return CjxlRetCode::ERR_CONTAINER;
