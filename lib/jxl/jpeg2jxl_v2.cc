@@ -173,7 +173,6 @@ uint8_t* encodeJpegToJxlBytes(uint8_t *data, size_t data_size, size_t* compresse
   std::vector<uint8_t> compressed;
   EncodeWithEncoder(enc.get(), &compressed);
   *compressed_size = compressed.size();
-  printf("[JXL log]compressed size: %zu\n", compressed.size());
   uint8_t* result = reinterpret_cast<uint8_t*>(malloc(*compressed_size));
   memcpy(result, compressed.data(), *compressed_size);
   return result;
@@ -183,7 +182,6 @@ uint8_t* decodeJxlToJpegBytes(uint8_t *data, size_t data_size, size_t* decompres
   std::vector<uint8_t> orig;
   orig.resize(data_size);
   memcpy(orig.data(), data, data_size);
-  printf("Read file size: %zu\n", orig.size());
 
   JxlDecoderPtr dec = JxlDecoderMake(nullptr);
   if (JXL_DEC_SUCCESS !=
@@ -222,7 +220,6 @@ uint8_t* decodeJxlToJpegBytes(uint8_t *data, size_t data_size, size_t* decompres
     exit(1);
   }
   used = reconstructed_buffer.size() - JxlDecoderReleaseJPEGBuffer(dec.get());
-  printf("used: %zu\n", used);
   *decompressed_size = used;
   uint8_t* result = reinterpret_cast<uint8_t*>(malloc(used));
   memcpy(result, reconstructed_buffer.data(), used);
