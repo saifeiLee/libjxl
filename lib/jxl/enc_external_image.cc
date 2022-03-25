@@ -135,6 +135,11 @@ Status ConvertFromExternal(Span<const uint8_t> bytes, size_t xsize,
   }
   JXL_ASSERT(channel->xsize() == xsize);
   JXL_ASSERT(channel->ysize() == ysize);
+  // Too large buffer is likely an application bug, so also fail for that.
+  // Do allow padding to stride in last row though.
+  if (bytes.size() > row_size * ysize) {
+    return JXL_FAILURE("Buffer size is too large");
+  }
 
   const bool little_endian =
       endianness == JXL_LITTLE_ENDIAN ||
@@ -252,6 +257,14 @@ Status ConvertFromExternal(Span<const uint8_t> bytes, size_t xsize,
         "Buffer size is too small: expected at least %" PRIuS
         " bytes (= %" PRIuS " * %" PRIuS " * %" PRIuS "), got %" PRIuS " bytes",
         bytes_to_read, xsize, ysize, bytes_per_pixel, bytes.size());
+  }
+  // Too large buffer is likely an application bug, so also fail for that.
+  // Do allow padding to stride in last row though.
+  if (bytes.size() > row_size * ysize) {
+    return JXL_FAILURE(
+        "Buffer size is too large: expected at most %" PRIuS " bytes (= %" PRIuS
+        " * %" PRIuS " * %" PRIuS "), got %" PRIuS " bytes",
+        row_size * ysize, xsize, ysize, bytes_per_pixel, bytes.size());
   }
   const bool little_endian =
       endianness == JXL_LITTLE_ENDIAN ||
@@ -418,6 +431,12 @@ Status ConvertFromExternal(Span<const uint8_t> bytes, size_t xsize,
           "ConvertAlphaUint"));
     }
 
+    ib->SetAlpha(std::move(alpha), alpha_is_premultiplied);
+  } else if (!has_alpha && ib->HasAlpha()) {
+    // if alpha is not passed, but it is expected, then assume
+    // it is all-opaque
+    ImageF alpha(xsize, ysize);
+    FillImage(1.0f, &alpha);
     ib->SetAlpha(std::move(alpha), alpha_is_premultiplied);
   }
 

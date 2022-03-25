@@ -118,7 +118,7 @@ set(JPEGXL_ENABLE_VIEWERS false CACHE BOOL
 set(JPEGXL_ENABLE_TCMALLOC ${ENABLE_TCMALLOC_DEFAULT} CACHE BOOL
     "Build JPEGXL using gperftools (tcmalloc) allocator.")
 set(JPEGXL_ENABLE_PLUGINS false CACHE BOOL
-    "Build third-party plugings to support JPEG XL in other applications.")
+    "Build third-party plugins to support JPEG XL in other applications.")
 set(JPEGXL_ENABLE_COVERAGE false CACHE BOOL
     "Enable code coverage tracking for libjxl. This also enables debug and disables optimizations.")
 set(JPEGXL_ENABLE_PROFILER false CACHE BOOL
@@ -308,7 +308,7 @@ add_subdirectory(third_party)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
                ${PROJECT_BINARY_DIR}/LICENSE.jpeg-xl COPYONLY)
 
-# Enable tests regardless of where are they defined.
+# Enable tests regardless of where they are defined.
 enable_testing()
 include(CTest)
 
@@ -419,7 +419,7 @@ if (ASCIIDOC_PY_FOUND)
     list(APPEND MANPAGES "${PAGE}.1")
   endforeach()
   add_custom_target(manpages ALL DEPENDS ${MANPAGES})
-  install(FILES ${MANPAGE_FILES} DESTINATION share/man/man1)
+  install(FILES ${MANPAGE_FILES} DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()  # ASCIIDOC_PY_FOUND
 else()
   message(WARNING "asciidoc was not found, the man pages will not be installed.")

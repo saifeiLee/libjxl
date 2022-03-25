@@ -228,11 +228,18 @@ void QuantizeChannel(Channel& ch, const int q) {
 // fit in pixel_type
 Status float_to_int(const float* const row_in, pixel_type* const row_out,
                     size_t xsize, unsigned int bits, unsigned int exp_bits,
-                    bool fp, float factor) {
+                    bool fp, double dfactor) {
   JXL_ASSERT(sizeof(pixel_type) * 8 >= bits);
   if (!fp) {
-    for (size_t x = 0; x < xsize; ++x) {
-      row_out[x] = row_in[x] * factor + (row_in[x] < 0 ? -0.5f : 0.5f);
+    if (bits > 22) {
+      for (size_t x = 0; x < xsize; ++x) {
+        row_out[x] = row_in[x] * dfactor + (row_in[x] < 0 ? -0.5 : 0.5);
+      }
+    } else {
+      float factor = dfactor;
+      for (size_t x = 0; x < xsize; ++x) {
+        row_out[x] = row_in[x] * factor + (row_in[x] < 0 ? -0.5f : 0.5f);
+      }
     }
     return true;
   }
@@ -499,6 +506,9 @@ Status ModularFrameEncoder::ComputeEncodingData(
     }
   }
 
+  // in the non-float case, there is an implicit 0 sign bit
+  int max_bitdepth =
+      do_color ? metadata.bit_depth.bits_per_sample + (fp ? 0 : 1) : 0;
   Image& gi = stream_images[0];
   gi = Image(xsize, ysize, metadata.bit_depth.bits_per_sample, nb_chans);
   int c = 0;
@@ -508,8 +518,10 @@ Status ModularFrameEncoder::ComputeEncodingData(
     if (cparams.manual_xyb_factors.size() == 3) {
       DequantMatricesSetCustomDC(&enc_state->shared.matrices,
                                  cparams.manual_xyb_factors.data());
+      // TODO(jon): update max_bitdepth in this case
     } else {
       DequantMatricesSetCustomDC(&enc_state->shared.matrices, enc_factors);
+      max_bitdepth = 12;
     }
   }
   pixel_type maxval = gi.bitdepth < 32 ? (1u << gi.bitdepth) - 1 : 0;
@@ -523,7 +535,7 @@ Status ModularFrameEncoder::ComputeEncodingData(
       // XYB is encoded as YX(B-Y)
       if (cparams.color_transform == ColorTransform::kXYB && c < 2)
         c_out = 1 - c_out;
-      float factor = maxval;
+      double factor = maxval;
       if (cparams.color_transform == ColorTransform::kXYB)
         factor = enc_state->shared.matrices.InvDCQuant(c);
       if (c == 2 && cparams.color_transform == ColorTransform::kXYB) {
@@ -581,7 +593,8 @@ Status ModularFrameEncoder::ComputeEncodingData(
     int bits = eci.bit_depth.bits_per_sample;
     int exp_bits = eci.bit_depth.exponent_bits_per_sample;
     bool fp = eci.bit_depth.floating_point_sample;
-    float factor = (fp ? 1 : ((1u << eci.bit_depth.bits_per_sample) - 1));
+    double factor = (fp ? 1 : ((1u << eci.bit_depth.bits_per_sample) - 1));
+    if (bits + (fp ? 0 : 1) > max_bitdepth) max_bitdepth = bits + (fp ? 0 : 1);
     std::atomic<bool> has_error{false};
     JXL_RETURN_IF_ERROR(RunOnPool(
         pool, 0, gi.channel[c].plane.ysize(), ThreadPool::NoInit,
@@ -598,6 +611,13 @@ Status ModularFrameEncoder::ComputeEncodingData(
     if (has_error) return JXL_FAILURE("Error in float to integer conversion");
   }
   JXL_ASSERT(c == nb_chans);
+
+  int level_max_bitdepth = (cparams.level == 5 ? 16 : 32);
+  if (max_bitdepth > level_max_bitdepth)
+    return JXL_FAILURE(
+        "Bitdepth too high for level %i (need %i bits, have only %i in this "
+        "level)",
+        cparams.level, max_bitdepth, level_max_bitdepth);
 
   // Set options and apply transformations
 
@@ -704,8 +724,10 @@ Status ModularFrameEncoder::ComputeEncodingData(
     }
   }
 
+  // don't do an RCT if we're short on bits
   if (cparams.color_transform == ColorTransform::kNone && do_color && !fp &&
-      gi.channel.size() - gi.nb_meta_channels >= 3) {
+      gi.channel.size() - gi.nb_meta_channels >= 3 &&
+      max_bitdepth + 1 < level_max_bitdepth) {
     if (cparams.colorspace == 1 ||
         (cparams.colorspace < 0 &&
          (quality < 100 || cparams.speed_tier > SpeedTier::kHare))) {
@@ -713,19 +735,30 @@ Status ModularFrameEncoder::ComputeEncodingData(
       ycocg.rct_type = 6;
       ycocg.begin_c = gi.nb_meta_channels;
       do_transform(gi, ycocg, weighted::Header(), pool);
+      max_bitdepth++;
     } else if (cparams.colorspace >= 2) {
       Transform sg(TransformId::kRCT);
       sg.begin_c = gi.nb_meta_channels;
       sg.rct_type = cparams.colorspace - 2;
       do_transform(gi, sg, weighted::Header(), pool);
+      max_bitdepth++;
     }
   }
 
-  if (cparams.responsive && !gi.channel.empty()) {
+  // don't do squeeze if we don't have some spare bits
+  if (cparams.responsive && !gi.channel.empty() &&
+      max_bitdepth + 2 < level_max_bitdepth) {
     Transform t(TransformId::kSqueeze);
     t.squeezes = cparams.squeezes;
     do_transform(gi, t, weighted::Header(), pool);
+    max_bitdepth += 2;
   }
+
+  if (max_bitdepth + 1 > level_max_bitdepth) {
+    // force no group RCTs if we don't have a spare bit
+    cparams.colorspace = 0;
+  }
+  JXL_ASSERT(max_bitdepth <= level_max_bitdepth);
 
   std::vector<uint32_t> quants;
 

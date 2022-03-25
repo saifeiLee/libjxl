@@ -304,7 +304,7 @@ Status MakeFrameHeader(const CompressParams& cparams,
   frame_header->flags = FrameFlagsFromParams(cparams);
   // Non-photon noise is not supported in the Modular encoder for now.
   if (frame_header->encoding != FrameEncoding::kVarDCT &&
-      cparams.photon_noise_iso == 0 && cparams.manual_noise.size() == 0) {
+      cparams.photon_noise_iso == 0 && cparams.manual_noise.empty()) {
     frame_header->UpdateFlag(false, FrameHeader::Flags::kNoise);
   }
 
@@ -1044,11 +1044,11 @@ class LossyFrameEncoder {
 };
 
 Status ParamsPostInit(CompressParams* p) {
-  if (p->manual_noise.size() != 0 &&
+  if (!p->manual_noise.empty() &&
       p->manual_noise.size() != NoiseParams::kNumNoisePoints) {
     return JXL_FAILURE("Invalid number of noise lut entries");
   }
-  if (p->manual_xyb_factors.size() != 0 && p->manual_xyb_factors.size() != 3) {
+  if (!p->manual_xyb_factors.empty() && p->manual_xyb_factors.size() != 3) {
     return JXL_FAILURE("Invalid number of XYB quantization factors");
   }
   if (p->resampling <= 0) {

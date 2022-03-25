@@ -12,7 +12,6 @@
 #include "lib/jxl/dec_external_image.h"
 #include "lib/jxl/dec_frame.h"
 #include "lib/jxl/dec_modular.h"
-#include "lib/jxl/dec_reconstruct.h"
 #include "lib/jxl/decode_to_jpeg.h"
 #include "lib/jxl/fields.h"
 #include "lib/jxl/headers.h"
@@ -610,6 +609,11 @@ namespace {
 bool CheckSizeLimit(JxlDecoder* dec, size_t xsize, size_t ysize) {
   if (!dec->memory_limit_base) return true;
   if (xsize == 0 || ysize == 0) return true;
+  if (xsize >= dec->memory_limit_base || ysize >= dec->memory_limit_base) {
+    return false;
+  }
+  // Rough estimate of real row length.
+  xsize = jxl::DivCeil(xsize, 32) * 32;
   size_t num_pixels = xsize * ysize;
   if (num_pixels / xsize != ysize) return false;  // overflow
   if (num_pixels > dec->memory_limit_base) return false;
@@ -1066,6 +1070,7 @@ static JxlDecoderStatus ConvertImageInternal(
 
   jxl::Status status(true);
   if (want_extra_channel) {
+    JXL_ASSERT(extra_channel_index < frame.extra_channels().size());
     status = jxl::ConvertToExternal(
         frame.extra_channels()[extra_channel_index],
         BitsPerChannel(format.data_type), float_format, format.endianness,
@@ -1564,14 +1569,20 @@ JxlDecoderStatus JxlDecoderProcessCodestream(JxlDecoder* dec, const uint8_t* in,
           }
           dec->image_out_buffer_set = false;
 
+          bool has_ec = !dec->ib->extra_channels().empty();
           for (size_t i = 0; i < dec->extra_channel_output.size(); ++i) {
             void* buffer = dec->extra_channel_output[i].buffer;
             // buffer nullptr indicates this extra channel is not requested
             if (!buffer) continue;
+            if (!has_ec) {
+              JXL_WARNING(
+                  "Extra channels are not supported when callback is used");
+              return JXL_DEC_ERROR;
+            }
             const JxlPixelFormat* format = &dec->extra_channel_output[i].format;
             JxlDecoderStatus status = ConvertImageInternal(
                 dec, *dec->ib, *format,
-                /*want_extra_channel=*/true, i, buffer,
+                /*want_extra_channel=*/true, /*extra_channel_index=*/i, buffer,
                 dec->extra_channel_output[i].buffer_size, nullptr, nullptr);
             if (status != JXL_DEC_SUCCESS) return status;
           }
